@@ -1,0 +1,37 @@
+---
+title: "Plot"
+output: html_document
+date: "2022-10-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Reading the csv file from github
+```{r, chunk1, message=FALSE}
+pacman::p_load(haven, readr, dplyr, openxlsx)
+titanic_csv <-
+ read_csv(
+   "https://raw.githubusercontent.com/kijohnson/Data/main/titanic.csv"
+   )
+```
+
+## Group by passenger class and generate the median value for each Pclass
+```{r, chunk2}
+class(titanic_csv$Pclass)
+a<-titanic_csv %>% 
+  group_by(Pclass) %>% 
+  mutate(median_by_pclass=median(Age))
+```
+## Convert Pclass from numeric to factor, and make a boxplot showing the medians, spread of data, and outliers 
+```{r, chunk3}
+library(ggplot2)
+class <-factor(titanic_csv$Pclass)
+ggplot(data = titanic_csv, aes(x=class, y = Age)) +
+  geom_boxplot() +
+  labs(x = "Passenger Class", y = "Age",  title = "Boxplot")
+table(a$median_by_pclass)
+
+```
