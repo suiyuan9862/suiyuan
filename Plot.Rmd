@@ -39,9 +39,9 @@ table(a$median_by_pclass)
 ```{r, chunk4}
 x <- titanic_csv
 x %>% 
-  group_by(Sex) %>% 
+  group_by(Pclass,Sex) %>% 
   dplyr::summarise(n=n()) %>% 
-  mutate(percent = n/sum(n)*100) 
+  mutate(percent = paste0(round((n/sum(n)*100),2),'%'))
   
 ```
 
