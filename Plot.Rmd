@@ -35,3 +35,13 @@ ggplot(data = titanic_csv, aes(x=class, y = Age)) +
 table(a$median_by_pclass)
 
 ```
+
+```{r, chunk4}
+x <- titanic_csv
+x %>% 
+  group_by(Sex) %>% 
+  dplyr::summarise(n=n()) %>% 
+  mutate(percent = n/sum(n)*100) 
+  
+```
+
