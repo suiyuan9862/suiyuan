@@ -1,0 +1,137 @@
+---
+title: "ADA"
+output: html_document
+date: "2022-11-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("pacman")
+library(pacman)
+p_load(dplyr,foreign)
+pacman::p_load(dplyr, ggplot2, car, odds.n.ends,readr, tidyverse, broom,lmtest,table1)
+```
+
+#Import the data and view all the column names
+```{r}
+BRFSS_a <- read.xport("/Users/yuansui/Desktop/LLCP2021.XPT ")
+colnames(BRFSS_a)
+```
+#select several columns related to this analysis and make sure they were correctly selected
+```{r}
+BRFSSVar <- c("SEQNO","X_RACE","X_AGE65YR","CVDSTRK3","X_FRTLT1A","MARITAL","EDUCA","SEXVAR","X_BMI5CAT")
+BRFSS_b <- BRFSS_a[BRFSSVar]
+colnames(BRFSS_b)
+```
+#creating the dataset for analysis by including people aged 65 or older and exclude people with missing IV/DV/covariate variables
+```{r}
+
+BRFSS_c <- subset(BRFSS_b,X_AGE65YR==2) #target population:people above 65
+BRFSS_d <- subset(BRFSS_c,CVDSTRK3 %in% c(1,2) & X_FRTLT1A %in% c(1,2)) #non-missing IV and DV
+BRFSS_e <- subset(BRFSS_d, 
+                    MARITAL %in% c(1,2,3,4,5,6) & 
+                    X_RACE %in% c(1,2,3,4,5,6,7,8) &
+                    EDUCA %in% c(1,2,3,4,5,6) &
+                    SEXVAR %in% c(1,2) &
+                    X_BMI5CAT %in% c(1,2,3,4)) #non-missing marital status, race,education,sex,BMI
+
+
+#take a look at IV and DV
+table(BRFSS_e$CVDSTRK3,BRFSS_e$X_FRTLT1A)
+```
+
+#data management and making table 1
+```{r}
+# making all categorical variables factors, finished re-coding of marital status
+BRFSS_e<-BRFSS_e %>% 
+  mutate(Fruit = case_when(X_FRTLT1A == 2 ~ 1, X_FRTLT1A == 1 ~ 0), Recode_marital = case_when(MARITAL %in% c(2,3,4,5,6) ~ 0, MARITAL %in% c(1) ~ 1)) %>% 
+  mutate(Fruit = factor(Fruit, levels = c(0, 1), labels = c("At least once a  day", "Less than once a day"))) %>% 
+  mutate(Stroke=case_when(CVDSTRK3==2~0,CVDSTRK3==1~1)) %>% 
+  mutate(Stroke = factor(Stroke, levels = c(0, 1), labels = c("No Stroke History", "With Stroke History"))) %>% 
+  mutate(RACE = factor(X_RACE, levels = c(1,2,3,4,5,6,7,8),labels = c("White only, non-Hispanic","Black only, non-Hispanic","American Indian or Alaskan Native only, Non-Hispanic","Asian only, non-Hispanic","Native Hawaiian or other Pacific Islander only, Non-Hispanic","Other race only, non-Hispanic","Multiracial, non-Hispanic","Hispanic"))) %>% 
+  mutate(EDU = factor(EDUCA, levels = c(1,2,3,4,5,6),labels = c("Never attended school or only kindergarten","Grades 1 through 8 (Elementary)","Grades 9 through 11 (Some high school)","Grade 12 or GED (High school graduate)","College 1 year to 3 years (Some college or
+      technical school)","College 4 years or more (College graduate)"))) %>% 
+  mutate(SEX = factor(SEXVAR, levels = c(1,2),labels = c("Male","Female"))) %>% 
+  mutate(Marital_Status= factor(MARITAL, levels = c(1,2,3,4,5,6),labels = c("Married","Divorced","Widowed","Separated","Never married","A member of an unmarried couple"))) %>% 
+  mutate(BMI = factor(X_BMI5CAT, levels = c(1,2,3,4),labels = c("Underweight","Normal Weight","Overweight","Obese"))) %>% 
+  mutate(Recode_married = factor(Recode_marital, levels = c(1,0),labels = c("Married","Other")))
+
+
+#making table 1
+label(BRFSS_e$EDU)<-"Education"
+label(BRFSS_e$Marital_Status)<-"Marital Status"
+table1(~SEX + EDU + RACE + Marital_Status + BMI|Stroke, BRFSS_e)
+
+```
+
+#having the base model and doing lrtest for potential effect modification 
+```{r}
+library(MASS)
+#make a table with IV and DV
+Table1 = table(BRFSS_e$Stroke,BRFSS_e$Fruit)
+Table1
+chisq.test(Table1)
+
+
+#model1 is calculating the unadjusted OR and 95%CI
+model1 <- glm(Fruit ~ Stroke,
+               data = BRFSS_e,
+               family = binomial,
+              )
+exp(confint.default(model1)[2,])
+exp(coefficients(model1))
+summary(model1)
+
+#model2 is calculating the adjusted OR and 95%CI by adjusting education,race,sex,BMI,and marital status
+model2 <- glm(Fruit ~ Stroke + EDU + RACE + SEX +BMI +Marital_Status,
+               data = BRFSS_e,
+               family = binomial,
+              )
+exp(confint.default(model2)[2,])
+exp(coefficients(model2))
+summary(model2)
+
+#testing the effect modification by marital status with LR test,  the hypothesis was that marital status modifies the association between having a stroke history and having fruit less than one time a day
+#re-coded marital status was used because married stroke survivors might receive better and more stable care from their partners
+aa <- glm(Fruit ~ Stroke + Recode_marital,
+               data = BRFSS_e,
+               family = binomial,
+              )
+bb <- glm(Fruit ~ Stroke + Recode_marital +Stroke*Recode_marital ,
+               data = BRFSS_e,
+               family = binomial,
+              )
+
+lrtest(aa,bb) #The interaction term is significant via the LR test, so the next step is to run models stratified by Recode_marital
+
+```
+
+#making datasets for subgroup analysis, stratified by Recode_marital(married and other)
+```{r}
+BRFSS_f <- BRFSS_e %>% 
+  drop_na()
+BRFSS_m_0 <-  subset(BRFSS_e,Recode_marital==0) 
+BRFSS_m_1 <-  subset(BRFSS_e,Recode_marital==1) 
+
+#model3 is calculating the adjusted OR and 95%CI by adjusting education,race,sex,and BMI among 'other relations'
+model3 <- glm(Fruit ~ Stroke + EDU + RACE + SEX +BMI,
+               data = BRFSS_m_0,
+               family = binomial,
+              )
+exp(confint.default(model3)[2,])
+exp(coefficients(model3))
+summary(model3)
+
+#model4 is calculating the adjusted OR and 95%CI by adjusting education,race,sex,and BMI among 'married people'
+model4 <- glm(Fruit ~ Stroke + EDU + RACE + SEX +BMI,
+               data = BRFSS_m_1,
+               family = binomial,
+              )
+exp(confint.default(model4)[2,])
+exp(coefficients(model4))
+summary(model4)
+```
+
+
+
+
